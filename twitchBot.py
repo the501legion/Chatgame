@@ -11,13 +11,15 @@ from datetime import datetime
 import urllib2
 import json
 import dateutil.parser
+import config
+import csv
 
 HOST = "irc.twitch.tv"              # the Twitch IRC server
 PORT = 6667                         # always use port 6667!
-NICK = ""                           # your Twitch username, lowercase
-PASS = ""                           # your Twitch OAuth token
+NICK = config.TWITCH_NICK           # your Twitch username, lowercase
+PASS = config.TWITCH_PASS           # your Twitch OAuth token
 CHAN = ""                           # = loaded from db
-CLIENT_ID = ""
+CLIENT_ID = config.TWITCH_CLIENT
 STARTED = True
 MSG_LIST = []
 MSG_AMOUNT = 0
@@ -132,21 +134,45 @@ class TwitchBot(irc.bot.SingleServerIRCBot):
       COOLDOWN = now
       c.privmsg(self.channel, "Befehl registriert")
       try:
-        db = MySQLdb.connect(host="localhost",
-                        user="brighton",
+        db = MySQLdb.connect(host=config.DB_HOST,
+                        user=config.DB_USER,
                         charset='utf8',
                         use_unicode=True,
-                        passwd="VrBKHPhpe7WVn7qp",
-                        db="rbtv_chatgame")
+                        passwd=config.DB_PASSWD,
+                        db=config.DB_DB)
         cur = db.cursor()
         db.autocommit(True)
+        print(msg.lower()[1:])
 
-        cur.execute("SELECT result FROM cmd_brighton WHERE cmd = %s", (msg.lower()[1:],))
+        if "regieuhr " in msg.lower()[1:]:
+          if "regieuhr <Std:Min>" == msg.lower()[1:]:
+            return
+
+          if "regieuhr Budikopf" not in msg.lower()[1:]:
+            clock = msg.lower().split( )[1]
+            current = datetime.now()
+            hour = current.hour + 1
+            if hour > 24:
+              hour = 1
+            minute = current.minute
+
+            if hour < 10:
+              hour = "0%d" % (hour)
+            if minute < 10:
+              minute = "0%d" % (minute)
+
+            if clock == (hour + ":" + minute):
+              msg = "?Regieuhr <std:min> (aktuelle uhrzeit)"
+
+        #cur.execute("SELECT result FROM cmd_brighton WHERE cmd = %s", (msg.lower()[1:],))
+        cur.execute("SELECT result FROM cmd_hq WHERE cmd = %s", (msg.lower()[1:],))
         count = cur.rowcount
+              
         if count > 0:
             c.privmsg(self.channel, "Antwort gefunden")
             result = cur.fetchone()[0]
             result = result.replace("%name%", username)
+
             c.privmsg(self.channel, result)
             return
       except Exception as e:
@@ -201,15 +227,40 @@ def isLive(yesterday = ""):
     break
   return live
 
+def readFile(path):
+  file = open(path)
+  data = csv.reader(file, delimiter="\t")
+
+  db = MySQLdb.connect(host=config.DB_HOST,
+                  user=config.DB_USER,
+                  charset='utf8',
+                  use_unicode=True,
+                  passwd=config.DB_PASSWD,
+                  db=config.DB_DB)
+  cur = db.cursor()
+  db.autocommit(True)
+      
+  for row in data:
+    if len(row) == 2:
+      if len(row[0]) == 0:
+        continue
+      if row[0][0] != "?":
+        continue
+      print("------2-------")
+      print(row[0])
+      print(row[1])
+      row[1] = row[1].replace('"', "\"")
+      cur.execute("INSERT INTO cmd_hq (`prefix`, `cmd`, `result`) VALUES (%s, %s, %s);", ('?', row[0].lower()[1:], row[1], ))
+
 def main():
   global CHAN
   global STARTED
-  db = MySQLdb.connect(host="localhost",
-                  user="brighton",
-                  charset='utf8',
-                  use_unicode=True,
-                  passwd="VrBKHPhpe7WVn7qp",
-                  db="rbtv_chatgame")
+  db = MySQLdb.connect(host=config.DB_HOST,
+                        user=config.DB_USER,
+                        charset='utf8',
+                        use_unicode=True,
+                        passwd=config.DB_PASSWD,
+                        db=config.DB_DB)
   cur = db.cursor()
   db.autocommit(True)
 
@@ -225,7 +276,10 @@ def main():
   del cur
   db.close()
 
+  #readFile('hq.tsv')
   start_new_thread(twitchBot ,())
+  
+  
   try:
     while (STARTED):
       time.sleep(10)
