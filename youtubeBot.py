@@ -204,16 +204,38 @@ def get_messages(youtube, pagetoken = ""):
       if msg[0] == "?" and (now - COOLDOWN > 5):
         COOLDOWN = now
         try:
-          db = MySQLdb.connect(host="localhost",
-                          user="brighton",
-                          charset='utf8',
-                          use_unicode=True,
-                          passwd="VrBKHPhpe7WVn7qp",
-                          db="rbtv_chatgame")
+          db = MySQLdb.connect(host=config.DB_HOST,
+                        user=config.DB_USER,
+                        charset='utf8',
+                        use_unicode=True,
+                        passwd=config.DB_PASSWD,
+                        db=config.DB_DB)
           cur = db.cursor()
           db.autocommit(True)
+          print(msg.lower()[1:])
 
-          cur.execute("SELECT result FROM cmd_brighton WHERE cmd = %s", (msg.lower()[1:],))
+          if "regieuhr " in msg.lower()[1:]:
+            if "regieuhr <Std:Min>" == msg.lower()[1:]:
+              return
+
+            if "regieuhr Budikopf" not in msg.lower()[1:]:
+              clock = msg.lower().split( )[1]
+              current = datetime.now()
+              hour = current.hour + 1
+              if hour > 24:
+                hour = 1
+              minute = current.minute
+
+              if hour < 10:
+                hour = "0%d" % (hour)
+              if minute < 10:
+                minute = "0%d" % (minute)
+
+              if clock == (hour + ":" + minute):
+                msg = "?Regieuhr <std:min> (aktuelle uhrzeit)"
+
+          #cur.execute("SELECT result FROM cmd_brighton WHERE cmd = %s", (msg.lower()[1:],))
+          cur.execute("SELECT result FROM cmd_hq WHERE cmd = %s", (msg.lower()[1:],))
           count = cur.rowcount
           if count > 0:
               result = cur.fetchone()[0]
@@ -301,17 +323,23 @@ def main():
   global LAST_MSG
   global CHAT_ID
 
-  db = MySQLdb.connect(host="localhost",
-                  user="brighton",
-                  charset='utf8',
-                  use_unicode=True,
-                  passwd="VrBKHPhpe7WVn7qp",
-                  db="rbtv_chatgame")
+  db = MySQLdb.connect(host=config.DB_HOST,
+                        user=config.DB_USER,
+                        charset='utf8',
+                        use_unicode=True,
+                        passwd=config.DB_PASSWD,
+                        db=config.DB_DB)
   cur = db.cursor()
   db.autocommit(True)
 
-  cur.execute("SELECT youtubeChatID FROM settings")
-  CHAT_ID = cur.fetchone()[0]
+  if len(sys.argv) == 2:
+    CHAN = sys.argv[1]
+    args = ""
+    cur.execute("UPDATE settings SET youtubeChatID = %s", (CHAN,))
+  else:
+    cur.execute("SELECT youtubeChatID FROM settings")
+    CHAT_ID = cur.fetchone()[0]
+
 
   reload(sys)
   sys.setdefaultencoding('utf8')
